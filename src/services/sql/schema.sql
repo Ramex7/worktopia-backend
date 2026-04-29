@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS saved_jobs (
     user_id INT NOT NULL,
     job_id INT NOT NULL,
     PRIMARY KEY (user_id, job_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES candidate_profiles(user_id) ON DELETE CASCADE,
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
