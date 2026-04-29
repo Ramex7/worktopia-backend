@@ -1,7 +1,7 @@
 -- 1. CORE IDENTITY & AUTHENTICATION
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(254) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role ENUM('candidate', 'company') NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS job_applications (
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_job_user (job_id, user_id),
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES candidate_profiles(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS saved_jobs (
@@ -155,6 +155,15 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- Migrations
+-- Before running these, scan existing data: SELECT email FROM users WHERE LENGTH(email) > 254;
+-- Handle/truncate/clean any entries longer than 254 characters.
+ALTER TABLE users MODIFY COLUMN email VARCHAR(254) NOT NULL UNIQUE;
+
+-- Drop existing FK on job_applications.user_id and add new FK to candidate_profiles
+ALTER TABLE job_applications DROP FOREIGN KEY user_id;
+ALTER TABLE job_applications ADD FOREIGN KEY (user_id) REFERENCES candidate_profiles(user_id) ON DELETE CASCADE;
 
 -- 9. MESSAGING (Ephemeral)
 CREATE TABLE IF NOT EXISTS messages (

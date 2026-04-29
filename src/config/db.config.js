@@ -30,7 +30,7 @@ const dbConfig = {
 const pool = mysql.createPool(dbConfig);
 // prepare a function that will execute the SQL quires asynchronously
 // and return the result as a promise
-const query = async (sql, params) => {
+const query = async (sql, params = []) => {
   const [rows, fields] = await pool.execute(sql, params);
   return rows;
 };
