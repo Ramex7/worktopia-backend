@@ -65,11 +65,14 @@ CREATE TABLE IF NOT EXISTS connections (
     id INT AUTO_INCREMENT PRIMARY KEY,
     requester_id INT NOT NULL,
     receiver_id INT NOT NULL,
+    small_id INT GENERATED ALWAYS AS (LEAST(requester_id, receiver_id)) STORED,
+    large_id INT GENERATED ALWAYS AS (GREATEST(requester_id, receiver_id)) STORED,
     status ENUM('pending', 'accepted', 'blocked') DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (requester_id <> receiver_id),
     FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_connection (requester_id, receiver_id)
+    UNIQUE KEY unique_connection (small_id, large_id)
 ) ENGINE=InnoDB;
 
 -- 5. CONTENT (Posts & Reposts)
@@ -118,7 +121,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     field VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX (title), -- Speeds up search filtering
-    FOREIGN KEY (company_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (company_id) REFERENCES company_profiles(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS job_applications (
@@ -127,6 +130,7 @@ CREATE TABLE IF NOT EXISTS job_applications (
     user_id INT NOT NULL, -- The Candidate
     status ENUM('applied', 'reviewed', 'shortlisted', 'rejected') DEFAULT 'applied',
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_job_user (job_id, user_id),
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -160,7 +164,7 @@ CREATE TABLE IF NOT EXISTS messages (
     message_text TEXT NOT NULL,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     read_at DATETIME DEFAULT NULL, -- Populated when recipient opens the chat
-    INDEX (read_at), -- Crucial for the 5-minute cleanup performance
+    INDEX IDX_messages_receiver_read (receiver_id, read_at),
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

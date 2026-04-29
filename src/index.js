@@ -5,11 +5,43 @@ require("dotenv").config();
 // Import the sanitize-html module
 // import cors module
 const cors = require("cors");
-const corsOptions = {
-  origin: [process.env.FRONTEND_URL1, process.env.FRONTEND_URL2],
-  allowedHeaders: ["Content-Type", "Authorization", "x-access-token"],
-};
 const sanitizeHtml = require("sanitize-html");
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL1,
+  process.env.FRONTEND_URL2,
+].filter(Boolean);
+
+const corsOptions = {
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-access-token",
+    "x-setup-token",
+  ],
+};
+
+const sanitizeValue = (value) => {
+  if (typeof value === "string") {
+    return sanitizeHtml(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    const sanitizedObject = {};
+    for (const key of Object.keys(value)) {
+      sanitizedObject[key] = sanitizeValue(value[key]);
+    }
+    return sanitizedObject;
+  }
+
+  return value;
+};
+
 // Create a variable to hold the port number
 const port = process.env.PORT;
 // Create the webserver
@@ -22,11 +54,7 @@ app.use(express.json());
 // Middleware to sanitize user input
 app.use((req, res, next) => {
   if (req.body) {
-    for (let key in req.body) {
-      if (req.body.hasOwnProperty(key)) {
-        req.body[key] = sanitizeHtml(req.body[key]);
-      }
-    }
+    req.body = sanitizeValue(req.body);
   }
   next();
 });

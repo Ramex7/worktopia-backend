@@ -1,8 +1,90 @@
-// Import the query function from the db.config.js file
-const conn = require("../config/db.config");
+// Import the pool from the db.config.js file
+const { pool } = require("../config/db.config");
 // Import the fs module to read our sql file
 const fs = require("fs").promises;
 const path = require("path");
+
+function splitSqlStatements(sqlContent) {
+  const statements = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sqlContent.length; i += 1) {
+    const char = sqlContent[i];
+    const nextChar = sqlContent[i + 1];
+    const previousChar = sqlContent[i - 1];
+
+    if (inLineComment) {
+      if (char === "\n") {
+        inLineComment = false;
+        current += char;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === "*" && nextChar === "/") {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && !inBacktick) {
+      if (char === "-" && nextChar === "-") {
+        inLineComment = true;
+        i += 1;
+        continue;
+      }
+
+      if (char === "/" && nextChar === "*") {
+        inBlockComment = true;
+        i += 1;
+        continue;
+      }
+    }
+
+    if (char === "'" && !inDoubleQuote && !inBacktick && previousChar !== "\\") {
+      inSingleQuote = !inSingleQuote;
+      current += char;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && !inBacktick && previousChar !== "\\") {
+      inDoubleQuote = !inDoubleQuote;
+      current += char;
+      continue;
+    }
+
+    if (char === "`" && !inSingleQuote && !inDoubleQuote) {
+      inBacktick = !inBacktick;
+      current += char;
+      continue;
+    }
+
+    if (char === ";" && !inSingleQuote && !inDoubleQuote && !inBacktick) {
+      const statement = current.trim();
+      if (statement) {
+        statements.push(statement);
+      }
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  const finalStatement = current.trim();
+  if (finalStatement) {
+    statements.push(finalStatement);
+  }
+
+  return statements;
+}
 
 // Write a function to create the database tables
 async function install() {
@@ -10,34 +92,48 @@ async function install() {
   const queryfile = path.join(__dirname, "sql", "schema.sql");
 
   // Temporary variables used to store all queries and the return message
-  let queries = [];
   let finalMessage = { message: "All tables are created", status: 200 };
+  let connection;
 
   try {
     // Read the sql file asynchronously
     const fileContent = await fs.readFile(queryfile, "utf-8");
-    const lines = fileContent.split("\n");
+    const queries = splitSqlStatements(fileContent);
 
-    // Remove comments and empty lines
-    const cleanedLines = lines.filter(line => !line.trim().startsWith("--") && line.trim() !== "");
-    const sqlContent = cleanedLines.join("\n");
-    queries = sqlContent.split(";").map(q => q.trim()).filter(q => q.length > 0);
+    connection = await pool.getConnection();
 
-    // Loop through the queries and execute them one by one asynchronously
-    for (let i = 0; i < queries.length; i++) {
-      try {
-        await conn.query(queries[i]);
+    try {
+      await connection.beginTransaction();
+
+      for (let i = 0; i < queries.length; i += 1) {
+        await connection.query(queries[i]);
         console.log(`Query ${i + 1} executed successfully`);
-      } catch (err) {
-        console.error(`Error executing query ${i + 1}: ${err.message}`);
-        finalMessage.message = "Not all tables are created";
-        finalMessage.status = 500;
       }
+
+      await connection.commit();
+    } catch (err) {
+      finalMessage.message = "Not all tables are created";
+      finalMessage.status = 500;
+
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error(`Rollback failed: ${rollbackError.message}`);
+        finalMessage.message = "Database install failed and rollback was unsuccessful";
+      }
+
+      console.error(`Error executing schema installation: ${err.message}`);
     }
   } catch (err) {
-    console.error(`Error reading the SQL file: ${err.message}`);
-    finalMessage.message = "Failed to read SQL file";
+    console.error(`Install failed: ${err.message}`);
+    finalMessage.message = connection
+      ? "Failed to initialize database schema"
+      : "Failed to read SQL file";
     finalMessage.status = 500;
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 
   // Return the final message
